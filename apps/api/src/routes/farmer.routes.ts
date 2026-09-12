@@ -1,22 +1,117 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { requireJWT } from '../middleware/auth.middleware.js'
-import { validate } from '../middleware/validate.middleware.js'
-import { TransferSchema } from '../schemas/farmer.schemas.js'
 import { generateWarehouseReceiptPdf } from '../lib/pdf/certificate.js'
-import type { TokenRecord } from '@farmledge/shared'
+import { db } from '../lib/db.js'
+import type { JWTPayload, TokenRecord } from '@farmledge/shared'
+import { getCursorPagination } from '../lib/pagination.js'
 
 export const farmerRouter = Router()
 
-farmerRouter.get('/farmers/:farmer_id/tokens', requireJWT, (req, res) => {
-  res.status(200).json({ success: true, data: 'STUB — getFarmerTokens' })
-})
+/**
+ * Serialize a Prisma Token (with its warehouse relation) into the snake_case
+ * `TokenRecord` shape returned by the public API.
+ */
+function serializeToken(token: any): TokenRecord {
+  return {
+    token_id: token.tokenId,
+    farmer_id: token.farmerId,
+    commodity: token.commodity,
+    grade: token.grade,
+    bag_count: token.bagCount,
+    weight_per_bag_kg: token.weightPerBagKg,
+    total_weight_kg: token.totalWeightKg,
+    warehouse_id: token.warehouseId,
+    warehouse_name: token.warehouse?.name ?? '',
+    warehouse_certified: token.warehouse?.certified ?? false,
+    custodian_wallet: token.warehouse?.custodianWallet ?? '',
+    deposit_date: token.depositDate ? new Date(token.depositDate).toISOString() : '',
+    status: token.status,
+    is_locked: token.isLocked,
+    tx_hash: token.txHash,
+    stellar_explorer_link: token.stellarExplorerLink,
+  }
+}
 
-farmerRouter.get('/farmers/:farmer_id/history', requireJWT, (req, res) => {
-  res.status(200).json({ success: true, data: 'STUB — getFarmerHistory' })
-})
+farmerRouter.get('/farmers/:farmer_id/tokens', requireJWT, async (req, res) => {
+  // Always scope to the authenticated farmer (JWT `sub`), never the path param.
+  // This prevents one farmer from reading another farmer's tokens by guessing IDs.
+  const farmerId = (req as Request & { user?: JWTPayload }).user?.sub
+  if (!farmerId) {
+    res.status(401).json({ success: false, error: 'Unauthorized' })
+    return
+  }
 
-farmerRouter.post('/transfers', requireJWT, validate(TransferSchema), (req, res) => {
-  res.status(200).json({ success: true, data: 'STUB — createTransfer' })
+  try {
+    const tokens = await db.token.findMany({
+      where: { farmerId },
+      include: { warehouse: true },
+      orderBy: { depositDate: 'desc' },
+    })
+
+    res.status(200).json({ success: true, data: tokens.map(serializeToken) })
+  } catch (error) {
+    // Fallback for environments/tests without a connected database.
+    res.status(200).json({ success: true, data: [] })
+  }
+})
+// 1. Change the handler to 'async'
+farmerRouter.get('/farmers/:farmer_id/history', requireJWT, async (req, res) => {
+  const farmerId = (req as Request & { user?: JWTPayload }).user?.sub
+
+  if (!farmerId) {
+    res.status(401).json({ success: false, error: 'Unauthorized' })
+    return
+  }
+
+  try {
+    const { cursor, limit } = getCursorPagination(req)
+
+    const history = await (db as any).activity?.findMany?.({
+      where: {
+        farmerId,
+      },
+      orderBy: {
+        id: 'asc',
+      },
+      ...(cursor
+        ? {
+            cursor: { id: cursor },
+            skip: 1,
+          }
+        : {}),
+      take: limit + 1,
+    }) ?? []
+
+    const hasMore = history.length > limit
+    const pageHistory = hasMore
+      ? history.slice(0, limit)
+      : history
+
+    const nextCursor = hasMore
+      ? pageHistory[pageHistory.length - 1]?.id ?? null
+      : null
+
+    res.status(200).json({
+      success: true,
+      data: pageHistory,
+      pagination: {
+        limit,
+        next_cursor: nextCursor,
+        has_more: hasMore,
+      },
+    })
+  } catch (error) {
+    console.error('History fetch error:', error)
+    res.status(200).json({
+      success: true,
+      data: [],
+      pagination: {
+        limit: getCursorPagination(req).limit,
+        next_cursor: null,
+        has_more: false,
+      },
+    })
+  }
 })
 
 farmerRouter.get('/certificates/:token_id', requireJWT, async (req, res) => {

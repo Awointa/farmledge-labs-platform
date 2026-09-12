@@ -118,3 +118,15 @@ model ApiKey {
   createdAt   DateTime  @default(now())
   @@map("api_keys")
 }
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  actorRole String
+  action    String
+  targetId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}

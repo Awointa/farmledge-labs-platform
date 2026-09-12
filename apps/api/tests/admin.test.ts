@@ -204,3 +204,157 @@ test('POST /api/v1/admin/lenders/:id/api-keys uses default label when body is em
   assert.equal(body.success, true)
   assert.equal(body.data.label, 'api-key')
 })
+
+// ---------------------------------------------------------------------------
+// Custodian Onboarding (CUST-4) Tests
+// ---------------------------------------------------------------------------
+import { sdk } from '../src/services/sdk.js'
+import { getWarehouseByWallet } from '../src/lib/db.js'
+
+test('POST /api/v1/admin/custodians — Success case: on-chain call and DB record created', async () => {
+  const custodianData = {
+    name: 'Kano Central Grain Hub',
+    location: 'Kano City',
+    state: 'Kano',
+    certified: true,
+    capacityTonnes: 5000,
+    custodianWallet: 'GCUSTODIANONBOARDINGTEST001',
+  }
+
+  const res = await fetch(`${baseUrl}/api/v1/admin/custodians`, {
+    method: 'POST',
+    headers: {
+      'X-Admin-Secret': ADMIN_SECRET,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(custodianData),
+  })
+
+  assert.equal(res.status, 201)
+  const body = (await res.json()) as {
+    success: boolean
+    data: {
+      id: string
+      name: string
+      location: string
+      state: string
+      certified: boolean
+      capacityTonnes: number
+      custodianWallet: string
+      txHash: string
+      stellarExplorerLink: string
+    }
+  }
+
+  assert.equal(body.success, true)
+  assert.equal(body.data.name, 'Kano Central Grain Hub')
+  assert.equal(body.data.custodianWallet, 'GCUSTODIANONBOARDINGTEST001')
+  assert.ok(body.data.txHash, 'txHash must be present')
+  assert.ok(body.data.stellarExplorerLink.includes(body.data.txHash), 'stellarExplorerLink must contain txHash')
+
+  // Verify DB record exists
+  const dbRecord = getWarehouseByWallet('GCUSTODIANONBOARDINGTEST001')
+  assert.ok(dbRecord, 'Database record must exist after success')
+})
+
+test('POST /api/v1/admin/custodians — Idempotency case: duplicate txHash returns existing record without duplicating mint/DB write', async () => {
+  const custodianData = {
+    name: 'Kano Central Grain Hub',
+    location: 'Kano City',
+    state: 'Kano',
+    certified: true,
+    capacityTonnes: 5000,
+    custodianWallet: 'GCUSTODIANONBOARDINGTEST001',
+  }
+
+  // Call endpoint a second time with identical custodian wallet / payload
+  const res = await fetch(`${baseUrl}/api/v1/admin/custodians`, {
+    method: 'POST',
+    headers: {
+      'X-Admin-Secret': ADMIN_SECRET,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(custodianData),
+  })
+
+  assert.ok(res.status === 200 || res.status === 201)
+  const body = (await res.json()) as {
+    success: boolean
+    data: { custodianWallet: string; txHash: string }
+  }
+
+  assert.equal(body.success, true)
+  assert.equal(body.data.custodianWallet, 'GCUSTODIANONBOARDINGTEST001')
+  assert.ok(body.data.txHash, 'txHash must be present in idempotent response')
+})
+
+test('POST /api/v1/admin/custodians — Stellar call fails case: no DB write persists', async () => {
+  const failingWallet = 'GCUSTODIANFAILTEST999'
+  const custodianData = {
+    name: 'Failing Warehouse',
+    location: 'Abuja',
+    state: 'FCT',
+    certified: false,
+    capacityTonnes: 1000,
+    custodianWallet: failingWallet,
+  }
+
+  // Temporarily replace sdk.add_custodian to simulate on-chain transaction failure
+  const originalAddCustodian = sdk.add_custodian
+  sdk.add_custodian = async () => {
+    throw new Error('Stellar blockchain transaction failed: connection timeout')
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/admin/custodians`, {
+      method: 'POST',
+      headers: {
+        'X-Admin-Secret': ADMIN_SECRET,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(custodianData),
+    })
+
+    assert.equal(res.status, 500)
+    const body = (await res.json()) as { success: boolean; error: string }
+    assert.equal(body.success, false)
+    assert.match(body.error, /Stellar blockchain transaction failed/i)
+
+    // Critical assertion: Ensure NO database record was created when Stellar call failed
+    const dbRecord = getWarehouseByWallet(failingWallet)
+    assert.equal(dbRecord, null, 'No DB record must persist when blockchain call fails')
+  } finally {
+    sdk.add_custodian = originalAddCustodian
+  }
+})
+
+test('POST /api/v1/admin/custodians — Authentication & Validation failures', async () => {
+  // 1. Missing X-Admin-Secret
+  const resNoAuth = await fetch(`${baseUrl}/api/v1/admin/custodians`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Test',
+      location: 'Loc',
+      state: 'ST',
+      capacityTonnes: 100,
+      custodianWallet: 'GNOAUTH',
+    }),
+  })
+  assert.equal(resNoAuth.status, 401)
+
+  // 2. Missing required fields (missing custodianWallet)
+  const resBad = await fetch(`${baseUrl}/api/v1/admin/custodians`, {
+    method: 'POST',
+    headers: {
+      'X-Admin-Secret': ADMIN_SECRET,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'Incomplete Warehouse',
+      location: 'Lagos',
+    }),
+  })
+  assert.equal(resBad.status, 400)
+})
+

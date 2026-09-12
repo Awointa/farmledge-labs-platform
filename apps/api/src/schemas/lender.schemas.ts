@@ -8,3 +8,5 @@ export const LockSchema = z.object({
     .string({ required_error: 'loan_reference is required' })
     .min(1, 'loan_reference is required'),
 })
+
+  export const UnlockSchema = LockSchema

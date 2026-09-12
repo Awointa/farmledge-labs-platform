@@ -72,15 +72,16 @@ test('GET /api/v1/lender/tokens/:token_id/verify returns 200 with X-API-Key head
   assert.equal(body.success, true)
 })
 
-test('POST /api/v1/lender/tokens/:token_id/lock returns 200 with X-API-Key header', async () => {
+test('POST /api/v1/lender/tokens/:token_id/lock returns 404 for an unknown token', async () => {
   const res = await fetch(`${baseUrl}/api/v1/lender/tokens/123/lock`, {
     method: 'POST',
     headers: { 'X-API-Key': validApiKeyHeader, 'Content-Type': 'application/json' },
     body: JSON.stringify({ lender_id: 'lender-1', loan_reference: 'LOAN-001' }),
   })
-  assert.equal(res.status, 200)
-  const body = (await res.json()) as { success?: unknown }
-  assert.equal(body.success, true)
+  assert.equal(res.status, 404)
+  const body = (await res.json()) as { success?: unknown; error?: unknown }
+  assert.equal(body.success, false)
+  assert.equal(body.error, 'Token not found')
 })
 
 // Edge case: an empty X-API-Key value must still be rejected.

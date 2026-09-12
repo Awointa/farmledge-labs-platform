@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { type Request, type Response, type NextFunction } from 'express'
 import { verifyToken } from '../lib/jwt.js'
 import { db } from '../lib/db.js'
+import { type RequestContext } from './logger.middleware.js'
 
 export const requireJWT = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization
@@ -20,6 +21,7 @@ export const requireJWT = (req: Request, res: Response, next: NextFunction): voi
     const payload = verifyToken(token)
     // Attach user payload to request for downstream handlers
     ;(req as any).user = payload
+    ;(req as RequestContext).authContext = { actorId: payload.sub, actorRole: payload.role }
     next()
   } catch (error) {
     res.status(401).json({ success: false, error: 'Unauthorized' })
@@ -46,7 +48,7 @@ export const requireAPIKey = async (req: Request, res: Response, next: NextFunct
     const keyHash = hashApiKey(apiKey)
     const storedApiKey = await db.apiKey.findFirst({
       where: { keyHash },
-      select: { id: true, revokedAt: true },
+      select: { id: true, lenderId: true, revokedAt: true },
     })
 
     if (!storedApiKey) {
@@ -63,6 +65,8 @@ export const requireAPIKey = async (req: Request, res: Response, next: NextFunct
       where: { id: storedApiKey.id },
       data: { lastUsedAt: new Date() },
     })
+
+    ;(req as RequestContext).authContext = { actorId: storedApiKey.lenderId, actorRole: 'lender' }
 
     next()
   } catch (error) {
