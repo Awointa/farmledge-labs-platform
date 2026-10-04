@@ -28,14 +28,15 @@ after(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-test('POST /api/v1/deposits returns 200 stub response', async () => {
+test('POST /api/v1/deposits returns 400 for an empty body', async () => {
   const res = await fetch(`${baseUrl}/api/v1/deposits`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${validToken}` },
   });
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.deepEqual(body, { success: true, data: 'STUB — createDeposit' });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as { success?: unknown; error?: unknown };
+  assert.equal(body.success, false);
+  assert.ok(typeof body.error === 'string' && body.error.includes('farmerId is required'));
 });
 
 test('POST /api/v1/exits/test-token returns not found for an unknown token', async () => {
@@ -127,7 +128,7 @@ test('GET /api/v1/lender/farmers/test-farmer/collateral returns calculated colla
 
 test('GET /api/v1/lender/tokens/test-token/verify returns 404 for unknown token (LEND-2 real controller)', async () => {
   const res = await fetch(`${baseUrl}/api/v1/lender/tokens/test-token/verify`, {
-    headers: { 'X-API-Key': 'test-key' },
+    headers: { 'X-API-Key': validApiKeyHeader },
   })
   assert.equal(res.status, 404)
   const body = await res.json()

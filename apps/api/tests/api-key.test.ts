@@ -63,13 +63,13 @@ test('GET /api/v1/lender/farmers/:farmer_id/collateral returns 200 with X-API-Ke
   assert.equal(body.success, true)
 })
 
-test('GET /api/v1/lender/tokens/:token_id/verify returns 200 with X-API-Key header', async () => {
+test('GET /api/v1/lender/tokens/:token_id/verify returns 404 for an unknown token', async () => {
   const res = await fetch(`${baseUrl}/api/v1/lender/tokens/123/verify`, {
     headers: { 'X-API-Key': validApiKeyHeader },
   })
-  assert.equal(res.status, 200)
+  assert.equal(res.status, 404)
   const body = (await res.json()) as { success?: unknown }
-  assert.equal(body.success, true)
+  assert.equal(body.success, false)
 })
 
 test('POST /api/v1/lender/tokens/:token_id/lock returns 404 for an unknown token', async () => {
