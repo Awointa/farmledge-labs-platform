@@ -3,6 +3,7 @@ import { requireAPIKey } from '../middleware/auth.middleware.js'
 import { validate } from '../middleware/validate.middleware.js'
 import { LockSchema, UnlockSchema } from '../schemas/lender.schemas.js'
 import { getFarmerCollateral, lockToken, unlockToken } from '../controllers/lender.controller.js'
+import { verifyTokenController } from '../controllers/lender/verify-token.controller.js'
 
 export const lenderRouter = Router()
 

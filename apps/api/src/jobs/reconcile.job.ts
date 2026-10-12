@@ -13,7 +13,7 @@
  * The job NEVER writes to the chain — it only corrects the DB.
  */
 
-import cron from 'node-cron'
+import cron, { type ScheduledTask } from 'node-cron'
 import { Horizon } from '@stellar/stellar-sdk'
 import { db as realDb } from '../lib/db.js'
 import { env } from '../config/env.js'
@@ -220,7 +220,7 @@ export async function runReconciliation(
  * Register and start the cron job.
  * Returns the scheduled task so callers can `.stop()` it (e.g. in tests).
  */
-export function startReconcileJob(): cron.ScheduledTask {
+export function startReconcileJob(): ScheduledTask {
   const server = buildHorizonServer(env.HORIZON_URL)
 
   logger.info('Registering reconciliation job (*/15 * * * *)')

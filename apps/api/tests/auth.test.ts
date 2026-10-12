@@ -32,14 +32,14 @@ test('POST /api/v1/deposits returns 401 without auth header', async () => {
   assert.equal(body.error, 'Unauthorized');
 });
 
-test('POST /api/v1/deposits returns 200 with auth header', async () => {
+test('POST /api/v1/deposits passes auth with auth header (400 on empty body)', async () => {
   const res = await fetch(`${baseUrl}/api/v1/deposits`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${validToken}` },
   });
-  assert.equal(res.status, 200);
+  assert.equal(res.status, 400);
   const body = (await res.json()) as { success?: unknown };
-  assert.equal(body.success, true);
+  assert.equal(body.success, false);
 });
 
 test('POST /api/v1/exits/:token_id returns 401 without auth header', async () => {
