@@ -1,9 +1,8 @@
 import { type Request, type Response } from 'express'
-import { type Commodity } from '@prisma/client'
 import * as stellarService from '../services/stellar.service.js'
 import * as db from '../db/index.js'
 import { db as prisma } from '../lib/db.js'
-import { BAG_SIZE_CONFIG } from '../config/bagSizes.js'
+import { getCommodityConfig } from '../config/commodities.js'
 import { type TokenRecord, type CommodityType, type Grade } from '@farmledge/shared'
 import { getCursorPagination } from '../lib/pagination.js'
 
@@ -41,9 +40,9 @@ export const createDeposit = async (req: Request, res: Response) => {
 
     // Determine the total weight. A scale reading (actualWeighedKg) is
     // authoritative when supplied; otherwise derive it from the bag count and
-    // the standard bag size configured for this commodity.
-    const standardKg =
-      BAG_SIZE_CONFIG[depositData.commodity as unknown as Commodity]?.standardKg
+    // the standard bag size for this commodity, looked up via the registry.
+    const commodityEntry = getCommodityConfig(depositData.commodity as string)
+    const standardKg = commodityEntry?.bag.standardKg
     const totalWeightKg =
       depositData.actualWeighedKg ?? depositData.bagCount! * standardKg!
 
